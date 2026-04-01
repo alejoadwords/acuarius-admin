@@ -457,7 +457,7 @@ function doLogin() {
   if (!val) return;
   adminSecret = val;
   // Verificar con una llamada real
-  fetch(API + '/admin/metrics', { headers: { 'x-admin-secret': adminSecret } })
+  fetch(API + '/admin/admin-metrics', { headers: { 'x-admin-secret': adminSecret } })
     .then(r => {
       if (r.ok) {
         document.getElementById('login-screen').classList.add('hidden');
@@ -508,7 +508,7 @@ async function apiPut(path, body) {
 // ── DASHBOARD ──
 async function loadDashboard() {
   try {
-    const data = await apiGet('/admin/metrics');
+    const data = await apiGet('/admin/admin-metrics');
     const { overview, revenue, activity } = data;
 
     document.getElementById('m-total').textContent = overview.totalUsers;
@@ -557,7 +557,7 @@ async function loadDashboard() {
     `;
 
     // Usuarios recientes
-    const recent = await apiGet('/admin/users?page=1');
+    const recent = await apiGet('/admin/admin-users?page=1');
     const tbody = document.getElementById('recent-users-table');
     tbody.innerHTML = recent.users.slice(0, 8).map(u => `
       <tr onclick="openUser('${u.id}')">
@@ -583,7 +583,7 @@ async function loadUsers() {
   tbody.innerHTML = '<tr class="loading-row"><td colspan="7">Cargando...</td></tr>';
 
   try {
-    let url = `/admin/users?page=${currentPage}&plan=${plan}&status=${status}`;
+    let url = `/admin/admin-users?page=${currentPage}&plan=${plan}&status=${status}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     const data = await apiGet(url);
 
@@ -627,7 +627,7 @@ function debounceSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(
 async function openUser(id) {
   currentUserId = id;
   try {
-    const data = await apiGet('/admin/users?id=' + id);
+    const data = await apiGet('/admin/admin-users?id=' + id);
     const u = data.user;
     const c = data.clerk;
     if (!u && !c) { toast('Usuario no encontrado', 'error'); return; }
@@ -677,7 +677,7 @@ async function openUser(id) {
 
 async function saveUser() {
   try {
-    await apiPut('/admin/users', {
+    await apiPut('/admin/admin-users', {
       id: currentUserId,
       plan: document.getElementById('edit-plan').value,
       status: document.getElementById('edit-status').value,
@@ -702,13 +702,13 @@ async function toggleSuspend() {
 // ── PLANES ──
 async function loadPlans() {
   try {
-    const data = await apiGet('/admin/metrics');
+    const data = await apiGet('/admin/admin-metrics');
     document.getElementById('p-free').textContent = data.overview.trialUsers;
     document.getElementById('p-individual').textContent = data.overview.individualUsers;
     document.getElementById('p-agency').textContent = data.overview.agencyUsers;
 
     // Trials expirando
-    const users = await apiGet('/admin/users?plan=free&status=active');
+    const users = await apiGet('/admin/admin-users?plan=free&status=active');
     const now = new Date();
     const expiring = users.users.filter(u => u.trial_ends_at && new Date(u.trial_ends_at) > now);
     expiring.sort((a,b) => new Date(a.trial_ends_at) - new Date(b.trial_ends_at));
@@ -741,7 +741,7 @@ async function extendTrial(id) {
 // ── FACTURACIÓN ──
 async function loadBilling() {
   try {
-    const data = await apiGet('/admin/metrics');
+    const data = await apiGet('/admin/admin-metrics');
     document.getElementById('b-mrr').textContent = '$' + data.revenue.mrr;
     document.getElementById('b-month').textContent = '$' + data.revenue.revenueThisMonth;
     document.getElementById('b-total').textContent = '$' + data.revenue.totalRevenue;
@@ -761,7 +761,7 @@ function openAddBilling() {
 async function syncUsers() {
   toast('Sincronizando con Clerk...', 'success');
   try {
-    const r = await fetch(API + '/admin/sync', {
+    const r = await fetch(API + '/admin/admin-sync', {
       method: 'POST',
       headers: { 'x-admin-secret': adminSecret }
     });
