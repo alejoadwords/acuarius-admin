@@ -768,15 +768,25 @@ function openAddBilling() {
 async function syncUsers() {
   toast('Sincronizando con Clerk...', 'success');
   try {
-    const r = await fetch(API + '/admin/admin-sync', {
+    const r = await fetch(API + '/admin/admin-sync?_=' + Date.now(), {
       method: 'POST',
-      headers: { 'x-admin-secret': adminSecret }
+      headers: {
+        'x-admin-secret': adminSecret,
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
     });
     const data = await r.json();
-    toast(`Sincronizados ${data.synced} usuarios ✓`, 'success');
-    loadDashboard();
+    console.log('Sync response:', data);
+    if (data.error) {
+      toast('Error Clerk: ' + data.error, 'error');
+      return;
+    }
+    const count = data.synced ?? data.total ?? 0;
+    toast('Sincronizados ' + count + ' usuarios ✓', 'success');
+    setTimeout(() => { loadUsers(); loadDashboard(); }, 500);
   } catch (err) {
-    toast('Error en sincronización', 'error');
+    toast('Error en sincronización: ' + err.message, 'error');
   }
 }
 
