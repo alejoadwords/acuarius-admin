@@ -490,7 +490,14 @@ function showView(name) {
 
 // ── API CALLS ──
 async function apiGet(path) {
-  const r = await fetch(API + path, { headers: { 'x-admin-secret': adminSecret } });
+  const sep = path.includes('?') ? '&' : '?';
+  const r = await fetch(API + path + sep + '_=' + Date.now(), {
+    headers: {
+      'x-admin-secret': adminSecret,
+      'Cache-Control': 'no-cache, no-store',
+      'Pragma': 'no-cache'
+    }
+  });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
