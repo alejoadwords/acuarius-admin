@@ -191,6 +191,16 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .empty-state{text-align:center;padding:60px 20px;color:var(--muted)}
 .empty-state-icon{font-size:40px;margin-bottom:12px;opacity:.4}
 .empty-state-text{font-size:14px}
+/* ── TEST USERS ── */
+.test-user-badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:600;background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px}
+.form-note{font-size:11px;color:var(--muted2);margin-top:4px}
+.create-user-form{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:24px;margin-bottom:20px}
+.create-user-title{font-size:14px;font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:10px}
+.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+.test-user-id{font-family:var(--mono);font-size:10px;color:var(--muted2);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:6px}
+
 </style>
 </head>
 <body>
@@ -243,6 +253,11 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
       <div class="nav-item" onclick="showView('billing')" data-view="billing">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
         Facturación
+      </div>
+      <div class="nav-section">Herramientas</div>
+      <div class="nav-item" onclick="showView('test-users')" data-view="test-users">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v4M10 13h4"/></svg>
+        Usuarios de prueba
       </div>
     </div>
     <div class="sidebar-footer">
@@ -392,6 +407,95 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
   </div>
 </div>
 
+      <!-- TEST USERS -->
+      <div class="view" id="view-test-users">
+        <div class="create-user-form">
+          <div class="create-user-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v4M10 13h4"/></svg>
+            Crear usuario de prueba
+            <span class="test-user-badge">⚗ Solo para testing</span>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <div class="field-label">Email *</div>
+              <input type="email" class="field-input" id="tu-email" placeholder="test@ejemplo.com">
+            </div>
+            <div>
+              <div class="field-label">Nombre</div>
+              <input type="text" class="field-input" id="tu-name" placeholder="Nombre de prueba">
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div>
+              <div class="field-label">Plan / Licencia</div>
+              <select class="field-select" id="tu-plan">
+                <option value="free">Free (Trial)</option>
+                <option value="individual">Individual ($19)</option>
+                <option value="agency">Agencia ($49)</option>
+                <option value="admin">Admin</option>
+              </select>
+              <div class="form-note">Define qué agentes y features ve el usuario</div>
+            </div>
+            <div>
+              <div class="field-label">Estado inicial</div>
+              <select class="field-select" id="tu-status">
+                <option value="active">Activo</option>
+                <option value="suspended">Suspendido</option>
+              </select>
+            </div>
+            <div>
+              <div class="field-label">Días de trial</div>
+              <input type="number" class="field-input" id="tu-trial" value="30" min="1" max="365">
+              <div class="form-note">Desde hoy. Solo aplica si plan = Free</div>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <div class="field-label">Límite de mensajes</div>
+              <input type="number" class="field-input" id="tu-msg-limit" value="99999">
+              <div class="form-note">99999 = ilimitado</div>
+            </div>
+            <div>
+              <div class="field-label">Límite de cuentas conectadas</div>
+              <input type="number" class="field-input" id="tu-acc-limit" value="3">
+            </div>
+          </div>
+
+          <div style="margin-bottom:20px">
+            <div class="field-label">Notas internas</div>
+            <input type="text" class="field-input" id="tu-notes" placeholder="Ej: prueba de agente Meta Ads para cliente X">
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px">
+            <button class="btn btn-primary" onclick="createTestUser()" id="btn-create-test">
+              <span id="btn-create-test-label">Crear usuario de prueba</span>
+            </button>
+            <span style="font-size:12px;color:var(--muted)">El ID tendrá prefijo <code style="font-family:var(--mono);background:var(--surface2);padding:1px 5px;border-radius:3px">test_</code> para identificarlo fácilmente</span>
+          </div>
+
+          <div id="tu-result" style="display:none;margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px">
+            <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px">✓ Usuario creado exitosamente</div>
+            <div id="tu-result-body" style="font-size:12px;font-family:var(--mono);color:var(--muted);line-height:1.7"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Usuarios de prueba existentes</div>
+            <button class="btn btn-ghost" onclick="loadTestUsers()" style="font-size:12px;padding:6px 14px">↻ Actualizar</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Usuario</th><th>Plan</th><th>Estado</th><th>Trial expira</th><th>Notas</th><th></th></tr></thead>
+              <tbody id="test-users-table"><tr class="loading-row"><td colspan="6">Cargando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
 <!-- MODAL USUARIO -->
 <div class="modal-overlay hidden" id="user-modal">
   <div class="modal">
@@ -480,12 +584,13 @@ function showView(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   document.querySelector('[data-view="' + name + '"]').classList.add('active');
-  const titles = { dashboard: 'Dashboard', users: 'Usuarios', plans: 'Planes & Licencias', billing: 'Facturación' };
+  const titles = { dashboard: 'Dashboard', users: 'Usuarios', plans: 'Planes & Licencias', billing: 'Facturación', 'test-users': 'Usuarios de prueba' };
   document.getElementById('page-title').textContent = titles[name] || name;
   if (name === 'dashboard') loadDashboard();
   if (name === 'users') loadUsers();
   if (name === 'plans') loadPlans();
   if (name === 'billing') loadBilling();
+  if (name === 'test-users') loadTestUsers();
 }
 
 // ── API CALLS ──
@@ -762,6 +867,121 @@ async function loadBilling() {
 
 function openAddBilling() {
   toast('Próximamente: registro de pagos', 'success');
+}
+
+// ── TEST USERS ──
+async function createTestUser() {
+  const email = document.getElementById('tu-email').value.trim();
+  if (!email) { toast('El email es requerido', 'error'); return; }
+
+  const btn = document.getElementById('btn-create-test');
+  const label = document.getElementById('btn-create-test-label');
+  btn.disabled = true;
+  label.textContent = 'Creando...';
+
+  const resultEl = document.getElementById('tu-result');
+  resultEl.style.display = 'none';
+
+  try {
+    const r = await fetch(API + '/admin?action=create-test-user', {
+      method: 'POST',
+      headers: { 'x-admin-secret': adminSecret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        name: document.getElementById('tu-name').value.trim() || 'Usuario de prueba',
+        plan: document.getElementById('tu-plan').value,
+        status: document.getElementById('tu-status').value,
+        trial_days: document.getElementById('tu-trial').value,
+        messages_limit: document.getElementById('tu-msg-limit').value,
+        accounts_limit: document.getElementById('tu-acc-limit').value,
+        notes: document.getElementById('tu-notes').value.trim(),
+      })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.success) throw new Error(data.error || 'Error al crear usuario');
+
+    const u = data.user;
+    document.getElementById('tu-result-body').innerHTML =
+      'ID: ' + (u.id || data.id) + '<br>' +
+      'Email: ' + u.email + '<br>' +
+      'Plan: ' + u.plan + ' · Estado: ' + u.status + '<br>' +
+      'Trial expira: ' + formatDate(u.trial_ends_at) + '<br>' +
+      'Límite mensajes: ' + (u.messages_limit || 99999) + ' · Cuentas: ' + (u.accounts_limit || 1);
+    resultEl.style.display = 'block';
+
+    toast('Usuario de prueba creado ✓', 'success');
+    loadTestUsers();
+
+    // Limpiar formulario
+    document.getElementById('tu-email').value = '';
+    document.getElementById('tu-name').value = '';
+    document.getElementById('tu-notes').value = '';
+    document.getElementById('tu-plan').value = 'free';
+    document.getElementById('tu-trial').value = '30';
+    document.getElementById('tu-msg-limit').value = '99999';
+    document.getElementById('tu-acc-limit').value = '3';
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Crear usuario de prueba';
+  }
+}
+
+async function loadTestUsers() {
+  const tbody = document.getElementById('test-users-table');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr class="loading-row"><td colspan="6">Cargando...</td></tr>';
+  try {
+    // Traemos todos los usuarios y filtramos los test_ en frontend
+    const data = await apiGet('/admin?action=users&page=1');
+    // Pedimos más páginas si hay muchas
+    let all = data.users || [];
+    if (data.pages > 1) {
+      for (let p = 2; p <= Math.min(data.pages, 10); p++) {
+        const page = await apiGet('/admin?action=users&page=' + p);
+        all = all.concat(page.users || []);
+      }
+    }
+    const testUsers = all.filter(u => u.id && u.id.startsWith('test_'));
+    if (!testUsers.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No hay usuarios de prueba creados aún</td></tr>';
+      return;
+    }
+    tbody.innerHTML = testUsers.map(u => {
+      const now = new Date();
+      const trialOk = u.trial_ends_at && new Date(u.trial_ends_at) > now;
+      const daysLeft = u.trial_ends_at ? Math.ceil((new Date(u.trial_ends_at) - now) / (1000*60*60*24)) : 0;
+      return '<tr onclick="openUser('' + u.id + '')">' +
+        '<td><div style="font-weight:500">' + (u.name || '—') + '</div><div style="font-size:11px;color:var(--muted)">' + u.email + '</div><span class="test-user-badge" style="margin-top:3px;display:inline-flex">test_</span></td>' +
+        '<td><span class="badge badge-' + u.plan + '">' + u.plan + '</span></td>' +
+        '<td><span class="badge badge-' + u.status + '">' + u.status + '</span></td>' +
+        '<td class="mono" style="color:' + (trialOk ? 'var(--amber)' : 'var(--red)') + '">' + (u.trial_ends_at ? formatDate(u.trial_ends_at) + (trialOk ? ' (' + daysLeft + 'd)' : ' — expirado') : '—') + '</td>' +
+        '<td style="font-size:11px;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</td>' +
+        '<td><button onclick="event.stopPropagation();deleteTestUser('' + u.id + '')" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">Eliminar</button></td>' +
+        '</tr>';
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:30px">Error cargando usuarios de prueba</td></tr>';
+  }
+}
+
+async function deleteTestUser(id) {
+  if (!id.startsWith('test_')) { toast('Solo se pueden eliminar usuarios con prefijo test_', 'error'); return; }
+  if (!confirm('¿Eliminar este usuario de prueba? Esta acción no se puede deshacer.')) return;
+  try {
+    const r = await fetch(API + '/admin?action=delete-test-user', {
+      method: 'DELETE',
+      headers: { 'x-admin-secret': adminSecret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.success) throw new Error(data.error || 'Error');
+    toast('Usuario eliminado ✓', 'success');
+    loadTestUsers();
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
 }
 
 // ── SYNC ──
