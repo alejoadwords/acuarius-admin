@@ -952,13 +952,13 @@ async function loadTestUsers() {
       const now = new Date();
       const trialOk = u.trial_ends_at && new Date(u.trial_ends_at) > now;
       const daysLeft = u.trial_ends_at ? Math.ceil((new Date(u.trial_ends_at) - now) / (1000*60*60*24)) : 0;
-      return '<tr onclick="openUser('' + u.id + '')">' +
+      return '<tr onclick="openUser(\'' + u.id + '\')">' +
         '<td><div style="font-weight:500">' + (u.name || '—') + '</div><div style="font-size:11px;color:var(--muted)">' + u.email + '</div><span class="test-user-badge" style="margin-top:3px;display:inline-flex">test_</span></td>' +
         '<td><span class="badge badge-' + u.plan + '">' + u.plan + '</span></td>' +
         '<td><span class="badge badge-' + u.status + '">' + u.status + '</span></td>' +
         '<td class="mono" style="color:' + (trialOk ? 'var(--amber)' : 'var(--red)') + '">' + (u.trial_ends_at ? formatDate(u.trial_ends_at) + (trialOk ? ' (' + daysLeft + 'd)' : ' — expirado') : '—') + '</td>' +
         '<td style="font-size:11px;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</td>' +
-        '<td><button onclick="event.stopPropagation();deleteTestUser('' + u.id + '')" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">Eliminar</button></td>' +
+        '<td><button onclick="event.stopPropagation();deleteTestUser(\'' + u.id + '\')" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">Eliminar</button></td>' +
         '</tr>';
     }).join('');
   } catch (err) {
