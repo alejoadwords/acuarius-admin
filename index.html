@@ -201,6 +201,38 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .divider{border:none;border-top:1px solid var(--border);margin:20px 0}
 .test-user-id{font-family:var(--mono);font-size:10px;color:var(--muted2);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:6px}
 
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  html,body{overflow:auto}
+  #app{flex-direction:column;height:auto;min-height:100vh;overflow:auto}
+  .sidebar{width:100%;height:auto;flex-direction:column;border-right:none;border-bottom:1px solid var(--border)}
+  .sidebar-nav{display:flex;flex-wrap:wrap;padding:8px;gap:4px;overflow-y:visible}
+  .nav-section{display:none}
+  .nav-item{padding:7px 10px;font-size:12px;flex-shrink:0}
+  .sidebar-footer{padding:8px;border-top:1px solid var(--border)}
+  .sync-btn{width:auto;padding:7px 12px;font-size:11px}
+  .main{overflow-y:visible;height:auto}
+  .topbar{padding:12px 16px}
+  .content{padding:16px}
+  .metrics-grid{grid-template-columns:1fr 1fr!important;gap:12px}
+  .grid-2,.grid-3{grid-template-columns:1fr!important}
+  .form-grid,.form-grid-3{grid-template-columns:1fr!important}
+  .user-info-grid{grid-template-columns:1fr!important}
+  .modal{width:calc(100vw - 32px)!important;max-height:90vh}
+  table{font-size:12px}
+  td,th{padding:8px 10px!important}
+  .filters{gap:8px}
+  .search-input{min-width:0;flex:1}
+  .create-user-form{padding:16px}
+  .metric-value{font-size:24px}
+}
+@media (max-width: 480px) {
+  .metrics-grid{grid-template-columns:1fr!important}
+  .nav-item span,.nav-item{font-size:11px}
+  .topbar{padding:10px 12px}
+  .page-title{font-size:14px}
+}
 </style>
 </head>
 <body>
@@ -403,9 +435,6 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
         </div>
       </div>
 
-    </div>
-  </div>
-</div>
 
       <!-- TEST USERS -->
       <div class="view" id="view-test-users">
@@ -508,6 +537,9 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL RESET PASSWORD -->
 <div class="modal-overlay hidden" id="reset-pw-modal">
@@ -1016,7 +1048,6 @@ async function loadTestUsers() {
 }
 
 async function deleteTestUser(id) {
-  if (!id.startsWith('test_')) { toast('Solo se pueden eliminar usuarios con prefijo test_', 'error'); return; }
   if (!confirm('¿Eliminar este usuario de prueba? Esta acción no se puede deshacer.')) return;
   try {
     const r = await fetch(API + '/admin?action=delete-test-user', {
