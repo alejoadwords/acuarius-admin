@@ -227,7 +227,7 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
 <div id="app" class="hidden">
   <!-- SIDEBAR -->
   <div class="sidebar">
-    <div class="sidebar-header">
+    <div class="sidebar-header" onclick="showView('dashboard')" style="cursor:pointer" title="Ir al Dashboard">
       <div class="sidebar-logo">
         <svg width="18" height="18" viewBox="0 0 75 75"><path fill="#fff" d="M67.52 61.99L53.7 38.06l-6.09 10.57 10.76 18.64c.97 1.68 2.75 2.64 4.58 2.64.89 0 1.8-.24 2.63-.72 2.54-1.46 3.4-4.68 1.94-7.2z"/><path fill="#fff" d="M57.82 24.91l-5.86 10.16-6.1 10.56-9.44 16.35c-2.82 4.9-8.1 7.95-13.75 7.95-5.74 0-10.89-2.97-13.77-7.95-2.87-4.97-2.87-10.92 0-15.89L25.41 17.5c1.72-2.97 4.79-4.75 8.21-4.75s6.49 1.78 8.21 4.75l.6 1.04 1.71 2.96-6.1 10.57-4.42-7.65L18.06 51.36c-1.39 2.4-.47 4.53 0 5.33.47.8 1.84 2.67 4.62 2.67 1.89 0 3.67-1.02 4.6-2.67l12.48-21.62 6.11-10.57 2.8-4.86c1.46-2.53 4.69-3.4 7.22-1.93 2.52 1.45 3.39 4.67 1.93 7.2z"/><circle fill="#fff" cx="60.13" cy="10.7" r="5.3"/></svg>
       </div>
@@ -274,10 +274,6 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
       <div class="page-title" id="page-title">Dashboard</div>
       <div class="topbar-right">
         <div class="badge-live"><div class="badge-live-dot"></div>En vivo</div>
-        <button onclick="showView('dashboard')" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:6px 12px;font-size:12px;color:var(--muted);cursor:pointer;font-family:var(--font);transition:all .2s" onmouseover="this.style.borderColor='var(--blue);this.style.color='var(--blue-lt)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          Inicio
-        </button>
       </div>
     </div>
     <div class="content">
@@ -490,7 +486,7 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
             <button class="btn btn-primary" onclick="createTestUser()" id="btn-create-test">
               <span id="btn-create-test-label">Crear usuario de prueba</span>
             </button>
-            <span style="font-size:12px;color:var(--muted)">El ID tendrá prefijo <code style="font-family:var(--mono);background:var(--surface2);padding:1px 5px;border-radius:3px">test_</code> para identificarlo fácilmente</span>
+            <span style="font-size:12px;color:var(--muted)">Se creará en Clerk + Supabase con <code style="font-family:var(--mono);background:var(--surface2);padding:1px 5px;border-radius:3px">is_test_user: true</code></span>
           </div>
 
           <div id="tu-result" style="display:none;margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px">
@@ -512,6 +508,30 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
           </div>
         </div>
       </div>
+
+<!-- MODAL RESET PASSWORD -->
+<div class="modal-overlay hidden" id="reset-pw-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <div class="modal-title">🔑 Cambiar contraseña</div>
+      <button class="modal-close" onclick="closeModal('reset-pw-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px" id="reset-pw-email"></div>
+      <div class="field-group">
+        <div class="field-label">Nueva contraseña</div>
+        <input type="text" class="field-input" id="reset-pw-input" placeholder="Mín. 8 caracteres" autocomplete="off">
+      </div>
+      <button onclick="generateResetPassword()" style="background:var(--surface3);border:1px solid var(--border2);border-radius:var(--r);padding:8px 14px;font-size:12px;color:var(--muted);cursor:pointer;font-family:var(--font);margin-top:4px">
+        ⚡ Generar contraseña segura
+      </button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('reset-pw-modal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveResetPassword()">Guardar contraseña</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL USUARIO -->
 <div class="modal-overlay hidden" id="user-modal">
@@ -987,7 +1007,7 @@ async function loadTestUsers() {
         '<td><span class="badge badge-' + u.status + '">' + u.status + '</span></td>' +
         '<td class="mono" style="color:' + (trialOk ? 'var(--amber)' : 'var(--red)') + '">' + (u.trial_ends_at ? formatDate(u.trial_ends_at) + (trialOk ? ' (' + daysLeft + 'd)' : ' — expirado') : '—') + '</td>' +
         '<td style="font-size:11px;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</td>' +
-        '<td><button onclick="event.stopPropagation();deleteTestUser(\'' + u.id + '\')" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">Eliminar</button></td>' +
+        '<td style="display:flex;gap:6px;align-items:center"><button onclick="event.stopPropagation();openResetPassword(\'' + u.id + '\',\'' + u.email + '\')" style="background:var(--blue-dim);border:1px solid var(--blue);color:#818CF8;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">🔑 Clave</button><button onclick="event.stopPropagation();deleteTestUser(\'' + u.id + '\')" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">Eliminar</button></td>' +
         '</tr>';
     }).join('');
   } catch (err) {
@@ -1008,6 +1028,42 @@ async function deleteTestUser(id) {
     if (!r.ok || !data.success) throw new Error(data.error || 'Error');
     toast('Usuario eliminado ✓', 'success');
     loadTestUsers();
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+// ── RESET PASSWORD ──
+let resetPwUserId = '';
+
+function openResetPassword(id, email) {
+  resetPwUserId = id;
+  document.getElementById('reset-pw-email').textContent = 'Usuario: ' + email;
+  document.getElementById('reset-pw-input').value = '';
+  document.getElementById('reset-pw-modal').classList.remove('hidden');
+}
+
+function generateResetPassword() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+  let pwd = '';
+  for (let i = 0; i < 12; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('reset-pw-input').value = pwd;
+}
+
+async function saveResetPassword() {
+  const password = document.getElementById('reset-pw-input').value.trim();
+  if (!password || password.length < 8) { toast('Mínimo 8 caracteres', 'error'); return; }
+
+  try {
+    const r = await fetch(API + '/admin?action=reset-test-password', {
+      method: 'POST',
+      headers: { 'x-admin-secret': adminSecret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: resetPwUserId, password })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.success) throw new Error(data.error || 'Error');
+    toast('Contraseña actualizada ✓ — ' + password, 'success');
+    closeModal('reset-pw-modal');
   } catch (err) {
     toast('Error: ' + err.message, 'error');
   }
