@@ -203,6 +203,8 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
 
 
 /* ── RESPONSIVE ── */
+.pill-warn{display:inline-block;font-size:10px;font-weight:700;color:#B45309;background:#FEF3C7;border-radius:20px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+.hint-plan{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:6px}
 @media (max-width: 768px) {
   html,body{overflow:auto}
   #app{flex-direction:column;height:auto;min-height:100vh;overflow:auto}
@@ -578,9 +580,11 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
         <div class="field-label">Plan</div>
         <select class="field-select" id="edit-plan">
           <option value="free">Free</option>
-          <option value="individual">Individual</option>
-          <option value="agency">Agencia</option>
+          <option value="pro">Pro</option>
+          <option value="agency">Agency</option>
+          <option value="trial">Trial (prueba)</option>
         </select>
+        <div class="hint-plan">La app lee este valor de Clerk. «individual» es un nombre antiguo que deja el plan a medias: guárdalo como <b>Pro</b>.</div>
       </div>
       <div style="margin-bottom:16px">
         <div class="field-label">Estado</div>
@@ -813,19 +817,31 @@ async function openUser(id) {
     const c = data.clerk;
     if (!u && !c) { toast('Usuario no encontrado', 'error'); return; }
 
+    // El plan que gobierna los limites es el de Clerk, no el de la tabla users
+    const planClerk = (c?.public_metadata?.plan) || 'free';
+    const desajuste = (u?.plan || 'free') !== planClerk;
+
     const name = u?.name || (c?.first_name + ' ' + c?.last_name).trim() || 'Usuario';
     document.getElementById('modal-user-name').textContent = name;
 
     document.getElementById('modal-user-info').innerHTML = `
       <div class="info-item"><div class="info-item-label">Email</div><div class="info-item-value">${u?.email || c?.email_addresses?.[0]?.email_address || '—'}</div></div>
-      <div class="info-item"><div class="info-item-label">Plan actual</div><div class="info-item-value">${u?.plan || 'free'}</div></div>
+      <div class="info-item"><div class="info-item-label">Plan que aplica (Clerk)</div><div class="info-item-value">${planClerk}${desajuste ? ' <span class="pill-warn">≠ ' + (u?.plan || '—') + ' en la ficha</span>' : ''}</div></div>
       <div class="info-item"><div class="info-item-label">Mensajes usados</div><div class="info-item-value" style="font-family:var(--mono)">${(u?.messages_used || 0).toLocaleString()}</div></div>
       <div class="info-item"><div class="info-item-label">Cuentas conectadas</div><div class="info-item-value" style="font-family:var(--mono)">${u?.connected_accounts || 0}</div></div>
       <div class="info-item"><div class="info-item-label">Trial expira</div><div class="info-item-value">${u?.trial_ends_at ? formatDate(u.trial_ends_at) : '—'}</div></div>
       <div class="info-item"><div class="info-item-label">Registro</div><div class="info-item-value">${u?.created_at ? formatDate(u.created_at) : '—'}</div></div>
     `;
 
-    document.getElementById('edit-plan').value = u?.plan || 'free';
+    const sel = document.getElementById('edit-plan');
+    // Si viene con un valor antiguo ('individual') se ofrece igual, para no
+    // cambiarlo sin querer al guardar otra cosa.
+    if (planClerk && !Array.prototype.some.call(sel.options, o => o.value === planClerk)) {
+      const op = document.createElement('option');
+      op.value = planClerk; op.textContent = planClerk + ' (valor antiguo)';
+      sel.appendChild(op);
+    }
+    sel.value = planClerk;
     document.getElementById('edit-status').value = u?.status || 'active';
     document.getElementById('edit-msg-limit').value = u?.messages_limit || 99999;
     document.getElementById('edit-acc-limit').value = u?.accounts_limit || 1;
@@ -866,7 +882,7 @@ async function saveUser() {
       accounts_limit: parseInt(document.getElementById('edit-acc-limit').value),
       notes: document.getElementById('edit-notes').value,
     });
-    toast('Usuario actualizado ✓', 'success');
+    toast('Plan aplicado en Clerk ✓ — ya está activo para el usuario', 'success');
     closeModal('user-modal');
     loadUsers();
   } catch (err) {
