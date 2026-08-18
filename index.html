@@ -293,6 +293,10 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
         Soporte
         <span id="tk-pendientes" style="margin-left:auto;display:none;background:var(--amber);color:#111;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px">0</span>
       </div>
+      <div class="nav-item" onclick="showView('uso')" data-view="uso">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+        Consumo de IA
+      </div>
       <div class="nav-section">Herramientas</div>
       <div class="nav-item" onclick="showView('test-users')" data-view="test-users">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v4M10 13h4"/></svg>
@@ -446,6 +450,11 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
 
 
       <!-- TEST USERS -->
+      <div class="view" id="view-uso">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px" id="uso-dias"></div>
+        <div id="uso-cuerpo"><div style="color:var(--muted)">Cargando...</div></div>
+      </div>
+
       <div class="view" id="view-tickets">
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px" id="tk-filtros"></div>
         <div id="tk-lista"><div style="color:var(--muted)">Cargando…</div></div>
@@ -670,12 +679,13 @@ function showView(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   document.querySelector('[data-view="' + name + '"]').classList.add('active');
-  const titles = { dashboard: 'Dashboard', users: 'Usuarios', plans: 'Planes & Licencias', billing: 'Facturación', tickets: 'Soporte', 'test-users': 'Usuarios de prueba' };
+  const titles = { dashboard: 'Dashboard', users: 'Usuarios', plans: 'Planes & Licencias', billing: 'Facturación', uso: 'Consumo de IA', tickets: 'Soporte', 'test-users': 'Usuarios de prueba' };
   document.getElementById('page-title').textContent = titles[name] || name;
   if (name === 'dashboard') loadDashboard();
   if (name === 'users') loadUsers();
   if (name === 'plans') loadPlans();
   if (name === 'billing') loadBilling();
+  if (name === 'uso') usoCargar();
   if (name === 'tickets') tkCargar();
   if (name === 'test-users') loadTestUsers();
 }
@@ -1037,6 +1047,97 @@ async function createTestUser() {
     btn.disabled = false;
     label.textContent = 'Crear usuario de prueba';
   }
+}
+
+// ── CONSUMO DE IA ──
+// Cuánto cuesta cada cuenta y en qué se le va. Es lo que hay que mirar antes de
+// poner cupos: ponerlos sin esto sería inventarse los números.
+let usoDias = 30;
+
+const usd = n => '$' + Number(n || 0).toFixed(2);
+
+async function usoCargar() {
+  const cuerpo = document.getElementById('uso-cuerpo');
+  document.getElementById('uso-dias').innerHTML = [[7,'7 días'],[30,'30 días'],[90,'90 días']]
+    .map(([d,t]) => '<button class="btn' + (usoDias===d?'':' btn-ghost') + '" onclick="usoRango(' + d + ')">' + t + '</button>').join('');
+  cuerpo.innerHTML = '<div style="color:var(--muted)">Cargando...</div>';
+  try {
+    const d = await apiGet('/admin?action=uso-ia&dias=' + usoDias);
+    usoRender(d);
+  } catch (e) {
+    cuerpo.innerHTML = '<div style="color:var(--red)">' + tkEsc(e.message || 'No se pudo cargar') + '</div>';
+  }
+}
+
+function usoRango(d) { usoDias = d; usoCargar(); }
+
+function usoRender(d) {
+  const cuerpo = document.getElementById('uso-cuerpo');
+  if (!d.llamadas) {
+    cuerpo.innerHTML = '<div class="card" style="padding:24px;color:var(--muted)">' +
+      'Todavía no hay consumo registrado en este periodo. El registro empezó a funcionar ' +
+      'hoy, así que las cifras se van a llenar a medida que se use la app.</div>';
+    return;
+  }
+  const orig = Object.entries(d.por_origen || {}).sort((a,b) => b[1]-a[1]);
+  const ag   = Object.entries(d.por_agente || {}).sort((a,b) => b[1]-a[1]);
+
+  cuerpo.innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px">' +
+      usoTarjeta('Costo total', usd(d.total), d.llamadas + ' llamadas') +
+      usoTarjeta('Por llamada', usd(d.total / d.llamadas), 'promedio') +
+      usoTarjeta('Cuentas activas', String((d.por_cuenta||[]).length), 'con algún consumo') +
+      usoTarjeta('Cuenta más cara', usd((d.por_cuenta||[])[0]?.costo || 0), (d.por_cuenta||[])[0]?.email || '—') +
+    '</div>' +
+
+    '<div class="card" style="padding:18px 20px;margin-bottom:16px">' +
+      '<div style="font-weight:600;margin-bottom:12px">En qué se va</div>' +
+      orig.map(([k,v]) => usoBarra(k, v, d.total)).join('') +
+    '</div>' +
+
+    (ag.length ? '<div class="card" style="padding:18px 20px;margin-bottom:16px">' +
+      '<div style="font-weight:600;margin-bottom:12px">Qué agente cuesta más</div>' +
+      ag.map(([k,v]) => usoBarra(k, v, d.total)).join('') +
+    '</div>' : '') +
+
+    '<div class="card" style="overflow-x:auto">' +
+      '<table><thead><tr>' +
+        '<th>Cuenta</th><th>Plan</th><th class="num">Llamadas</th><th class="num">Costo</th><th>Reparto</th>' +
+      '</tr></thead><tbody>' +
+      (d.por_cuenta||[]).map(c =>
+        '<tr>' +
+          '<td>' + tkEsc(c.email || c.user_id) + (c.nombre ? '<div style="color:var(--muted);font-size:12px">' + tkEsc(c.nombre) + '</div>' : '') + '</td>' +
+          '<td>' + tkEsc(c.plan || '—') + '</td>' +
+          '<td class="num">' + c.llamadas + '</td>' +
+          '<td class="num" style="font-weight:600">' + usd(c.costo) + '</td>' +
+          '<td style="color:var(--muted);font-size:12px">' +
+            Object.entries(c.por_origen||{}).sort((a,b)=>b[1]-a[1])
+              .map(([k,v]) => k + ' ' + usd(v)).join(' · ') +
+          '</td>' +
+        '</tr>').join('') +
+      '</tbody></table>' +
+    '</div>';
+}
+
+function usoTarjeta(titulo, valor, pie) {
+  return '<div class="card" style="padding:18px 20px">' +
+    '<div style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em">' + titulo + '</div>' +
+    '<div style="font-size:26px;font-weight:600;margin:6px 0 2px">' + valor + '</div>' +
+    '<div style="color:var(--muted);font-size:12px">' + tkEsc(pie) + '</div>' +
+  '</div>';
+}
+
+function usoBarra(etiqueta, valor, total) {
+  const pct = total ? (valor/total*100) : 0;
+  return '<div style="margin-bottom:10px">' +
+    '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">' +
+      '<span>' + tkEsc(etiqueta) + '</span>' +
+      '<span style="color:var(--muted)">' + usd(valor) + ' · ' + pct.toFixed(0) + '%</span>' +
+    '</div>' +
+    '<div style="height:6px;background:var(--surface2);border-radius:4px;overflow:hidden">' +
+      '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:var(--blue)"></div>' +
+    '</div>' +
+  '</div>';
 }
 
 // ── SOPORTE ──
