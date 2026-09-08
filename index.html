@@ -325,7 +325,8 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
       <div class="view active" id="view-dashboard">
         <div class="metrics-grid" id="metrics-grid">
           <div class="metric-card blue"><div class="metric-label">Usuarios totales</div><div class="metric-value" id="m-total">—</div><div class="metric-sub"><span id="m-new7">—</span> nuevos esta semana</div></div>
-          <div class="metric-card green"><div class="metric-label">MRR</div><div class="metric-value" id="m-mrr">—</div><div class="metric-sub">Ingresos recurrentes mensuales</div></div>
+          <div class="metric-card green"><div class="metric-label">MRR</div><div class="metric-value" id="m-mrr">—</div><div class="metric-sub"><span id="m-pagando">—</span> cuentas pagando de verdad</div></div>
+          <div class="metric-card amber"><div class="metric-label">Sin cobrar</div><div class="metric-value" id="m-sincobrar">—</div><div class="metric-sub">Planes de pago sin pago registrado</div></div>
           <div class="metric-card amber"><div class="metric-label">Trials activos</div><div class="metric-value" id="m-trials">—</div><div class="metric-sub"><span id="m-expiring" style="color:var(--amber)">—</span> expiran en 3 días</div></div>
           <div class="metric-card purple"><div class="metric-label">Mensajes (7d)</div><div class="metric-value" id="m-msgs">—</div><div class="metric-sub"><span id="m-imgs">—</span> imágenes generadas</div></div>
         </div>
@@ -608,6 +609,48 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
         </select>
         <div class="hint-plan">La app lee este valor de Clerk. «individual» es un nombre antiguo que deja el plan a medias: guárdalo como <b>Pro</b>.</div>
       </div>
+
+      <!-- Cobro y vigencia. Guardar el plan arriba NO le pone fecha de fin: un
+           plan sin fecha no lo caduca nadie, que es como se regalaron seis
+           cuentas de Pro. Para dar acceso, se usa esto. -->
+      <div style="margin-bottom:16px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)">
+        <div class="field-label" style="margin-bottom:2px">Cobro y vigencia</div>
+        <div id="plan-vigencia" style="font-size:12px;color:var(--muted);margin-bottom:12px">—</div>
+        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+          <div>
+            <div class="field-label">Concepto</div>
+            <select class="field-select" id="sp-origen">
+              <option value="externo">Pagó por fuera (transferencia, Nequi…)</option>
+              <option value="hotmart">Pagó por Hotmart</option>
+              <option value="cortesia">Cortesía — acceso de prueba</option>
+            </select>
+          </div>
+          <div>
+            <div class="field-label">Meses</div>
+            <input type="number" class="field-input" id="sp-meses" value="1" min="1" max="24">
+          </div>
+        </div>
+        <div class="grid-2" style="gap:10px;margin-bottom:10px">
+          <div>
+            <div class="field-label">Plan que se activa</div>
+            <select class="field-select" id="sp-plan">
+              <option value="pro">Pro — $39/mes</option>
+              <option value="agency">Agency — $99/mes</option>
+            </select>
+          </div>
+          <div>
+            <div class="field-label">Importe <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+            <input type="number" class="field-input" id="sp-monto" placeholder="por defecto, el del plan">
+          </div>
+        </div>
+        <input type="text" class="field-input" id="sp-nota" placeholder="Referencia del pago, banco, quien lo recibió…" style="margin-bottom:10px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="confirmarPago()">Aplicar</button>
+          <button class="btn btn-ghost" onclick="quitarPlan()">Bajar a gratuito</button>
+          <span id="sp-msg" style="font-size:12px"></span>
+        </div>
+        <div class="hint-plan" style="margin-top:8px">La cortesía <b>no</b> se registra como ingreso. Si la cuenta ya tiene fecha por delante, los meses se <b>suman</b>.</div>
+      </div>
       <div style="margin-bottom:16px">
         <div class="field-label">Estado</div>
         <select class="field-select" id="edit-status">
@@ -723,35 +766,37 @@ async function loadDashboard() {
     document.getElementById('m-total').textContent = overview.totalUsers;
     document.getElementById('m-new7').textContent = '+' + overview.newLast7;
     document.getElementById('m-mrr').textContent = '$' + revenue.mrr;
+    document.getElementById('m-pagando').textContent = revenue.clientesPagando;
+    // Cuentas con plan de pago que NO son ingreso: cortesías y planes puestos a
+    // mano sin registrar. Es el número que faltaba: el MRR decía $152 contando
+    // cuentas de prueba con un plan antiguo.
+    const at = data.atencion || {};
+    const sinCobrar = (at.sin_registrar || 0) + (at.cortesias || 0);
+    document.getElementById('m-sincobrar').textContent = sinCobrar;
     document.getElementById('m-trials').textContent = overview.trialUsers;
     document.getElementById('m-expiring').textContent = overview.trialsExpiringSoon;
     document.getElementById('m-msgs').textContent = activity.messagesLast7.toLocaleString();
     document.getElementById('m-imgs').textContent = activity.imagesLast7;
 
-    // Plan distribution
+    // Reparto por plan. Antes la barra «Free» pintaba el contador de trials y
+    // «Individual» un alias viejo, así que Free salía siempre en 0.
     const total = overview.totalUsers || 1;
-    document.getElementById('plan-bars').innerHTML = `
+    const COLOR = { free: 'var(--muted2)', trial: 'var(--amber)', pro: '#818CF8', agency: 'var(--purple)', agencia: 'var(--purple)', individual: '#4B5563' };
+    const NOMBRE = { free: 'Free', trial: 'Trial', pro: 'Pro', agency: 'Agency', agencia: 'Agency', individual: 'Individual (antiguo)' };
+    const ORDEN = ['free', 'trial', 'pro', 'agency', 'agencia', 'individual'];
+    const planes = Object.entries(overview.porPlan || {})
+      .sort((a, b) => (ORDEN.indexOf(a[0]) + 99) % 99 - (ORDEN.indexOf(b[0]) + 99) % 99);
+    document.getElementById('plan-bars').innerHTML = planes.map(([plan, n]) => `
       <div class="plan-bar-item">
-        <div class="plan-bar-label">Free</div>
-        <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${(overview.trialUsers/total*100).toFixed(1)}%;background:var(--muted2)"></div></div>
-        <div class="plan-bar-count">${overview.trialUsers}</div>
-      </div>
-      <div class="plan-bar-item">
-        <div class="plan-bar-label">Individual</div>
-        <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${(overview.individualUsers/total*100).toFixed(1)}%;background:#818CF8"></div></div>
-        <div class="plan-bar-count">${overview.individualUsers}</div>
-      </div>
-      <div class="plan-bar-item">
-        <div class="plan-bar-label">Agencia</div>
-        <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${(overview.agencyUsers/total*100).toFixed(1)}%;background:var(--purple)"></div></div>
-        <div class="plan-bar-count">${overview.agencyUsers}</div>
-      </div>
-    `;
+        <div class="plan-bar-label">${NOMBRE[plan] || plan}</div>
+        <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${(n / total * 100).toFixed(1)}%;background:${COLOR[plan] || 'var(--muted2)'}"></div></div>
+        <div class="plan-bar-count">${n}</div>
+      </div>`).join('') || '<div style="color:var(--muted);font-size:12px">Sin datos</div>';
 
     document.getElementById('revenue-summary').innerHTML = `
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--border)">
-          <span style="font-size:12px;color:var(--muted)">MRR</span>
+          <span style="font-size:12px;color:var(--muted)">MRR — solo quien paga</span>
           <span style="font-family:var(--mono);font-weight:600;color:var(--green)">$${revenue.mrr} USD</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--border)">
@@ -764,6 +809,26 @@ async function loadDashboard() {
         </div>
       </div>
     `;
+
+    // Lo que el MRR NO cuenta, con nombre y apellido. Sin esto, un plan de pago
+    // regalado se veía igual que uno cobrado.
+    if (sinCobrar) {
+      const lista = (at.sin_registrar_detalle || [])
+        .map(x => `<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0">
+             <span style="font-size:12px;color:var(--text)">${x.email || '—'}</span>
+             <span style="font-family:var(--mono);font-size:11px;color:var(--amber)">${x.plan}${x.sin_fecha ? ' · sin fecha' : ''}</span>
+           </div>`).join('');
+      document.getElementById('revenue-summary').innerHTML += `
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--amber);font-weight:600;margin-bottom:8px">
+            ${sinCobrar} cuenta${sinCobrar === 1 ? '' : 's'} con plan de pago que no son ingreso
+          </div>
+          ${lista}
+          ${at.cortesias ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">${at.cortesias} de cortesía (a propósito)</div>` : ''}
+          ${at.vencidos_activos ? `<div style="font-size:11px;color:var(--red,#EF4444);margin-top:6px">${at.vencidos_activos} con la fecha vencida y el plan todavía activo</div>` : ''}
+          <div style="font-size:11px;color:var(--muted);margin-top:8px">Ábrelas en Usuarios y usa «Confirmar pago» o «Dar cortesía».</div>
+        </div>`;
+    }
 
     // Usuarios recientes
     const recent = await apiGet('/admin?action=users&page=1');
@@ -854,8 +919,33 @@ async function openUser(id) {
       <div class="info-item"><div class="info-item-label">Mensajes usados</div><div class="info-item-value" style="font-family:var(--mono)">${(u?.messages_used || 0).toLocaleString()}</div></div>
       <div class="info-item"><div class="info-item-label">Cuentas conectadas</div><div class="info-item-value" style="font-family:var(--mono)">${u?.connected_accounts || 0}</div></div>
       <div class="info-item"><div class="info-item-label">Trial expira</div><div class="info-item-value">${u?.trial_ends_at ? formatDate(u.trial_ends_at) : '—'}</div></div>
+      <div class="info-item"><div class="info-item-label">Plan vigente hasta</div><div class="info-item-value">${c?.public_metadata?.hasta ? formatDate(c.public_metadata.hasta) : '<span class="pill-warn">sin fecha</span>'}</div></div>
+      <div class="info-item"><div class="info-item-label">Concepto</div><div class="info-item-value">${c?.public_metadata?.origen || '—'}</div></div>
       <div class="info-item"><div class="info-item-label">Registro</div><div class="info-item-value">${u?.created_at ? formatDate(u.created_at) : '—'}</div></div>
     `;
+
+    // Estado del cobro, en una frase.
+    const meta = c?.public_metadata || {};
+    const vig = document.getElementById('plan-vigencia');
+    const DE_PAGO = ['pro', 'agency', 'agencia', 'individual'];
+    if (!DE_PAGO.includes(planClerk)) {
+      vig.innerHTML = 'Plan <b>' + planClerk + '</b>: no hay nada que cobrar.';
+      vig.style.color = 'var(--muted)';
+    } else if (!meta.hasta) {
+      vig.innerHTML = '⚠ Plan <b>' + planClerk + '</b> <b>sin fecha de fin</b>: no lo va a caducar nadie. Ponle una aquí abajo.';
+      vig.style.color = 'var(--amber)';
+    } else if (new Date(meta.hasta) < new Date()) {
+      vig.innerHTML = '⚠ Venció el <b>' + formatDate(meta.hasta) + '</b> y el plan sigue activo.';
+      vig.style.color = 'var(--amber)';
+    } else {
+      const dias = Math.ceil((new Date(meta.hasta) - new Date()) / 86400000);
+      vig.innerHTML = 'Vigente hasta el <b>' + formatDate(meta.hasta) + '</b> (' + dias + ' día' + (dias === 1 ? '' : 's') + ')'
+        + (meta.origen === 'cortesia' ? ' · <b>cortesía</b>, no es ingreso' : meta.origen ? ' · ' + meta.origen : '');
+      vig.style.color = meta.origen === 'cortesia' ? 'var(--muted)' : 'var(--green)';
+    }
+    if (DE_PAGO.includes(planClerk)) document.getElementById('sp-plan').value = planClerk === 'agency' ? 'agency' : 'pro';
+    if (meta.origen) document.getElementById('sp-origen').value = meta.origen;
+    document.getElementById('sp-msg').textContent = '';
 
     const sel = document.getElementById('edit-plan');
     // Si viene con un valor antiguo ('individual') se ofrece igual, para no
@@ -911,6 +1001,70 @@ async function saveUser() {
     loadUsers();
   } catch (err) {
     toast('Error: ' + err.message, 'error');
+  }
+}
+
+// ── COBRO Y VIGENCIA ──────────────────────────────────────────────
+// Llama a /admin?action=set-plan, que es lo único que deja el plan con fecha de
+// fin. Guardar el plan desde el selector de arriba NO pone fecha: así se
+// regalaron seis cuentas de Pro que no caducaba nadie.
+async function confirmarPago() {
+  const msg = document.getElementById('sp-msg');
+  const meses = parseInt(document.getElementById('sp-meses').value, 10);
+  if (!Number.isFinite(meses) || meses < 1 || meses > 24) {
+    msg.textContent = 'Los meses tienen que estar entre 1 y 24.';
+    msg.style.color = 'var(--amber)';
+    return;
+  }
+  const monto = document.getElementById('sp-monto').value.trim();
+  msg.textContent = 'Aplicando…'; msg.style.color = 'var(--muted)';
+  try {
+    const r = await fetch(API + '/admin?action=set-plan', {
+      method: 'POST',
+      headers: { 'x-admin-secret': adminSecret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentUserId,
+        plan: document.getElementById('sp-plan').value,
+        meses,
+        origen: document.getElementById('sp-origen').value,
+        monto: monto ? Number(monto) : undefined,
+        nota: document.getElementById('sp-nota').value.trim() || undefined,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    // El aviso llega cuando el plan se aplicó pero el pago no se pudo registrar.
+    // Se enseña tal cual: ocultarlo dejaría un cobro sin rastro.
+    if (d.aviso) { toast(d.aviso, 'error'); }
+    else { toast('Listo — plan ' + d.plan + ' hasta el ' + d.hasta, 'success'); }
+    closeModal('user-modal');
+    loadUsers();
+    loadDashboard();
+  } catch (err) {
+    msg.textContent = 'No se pudo: ' + err.message;
+    msg.style.color = 'var(--amber)';
+  }
+}
+
+async function quitarPlan() {
+  if (!confirm('¿Bajar esta cuenta a gratuito? Pierde los agentes, las campañas masivas y las automatizaciones. Sus datos no se tocan.')) return;
+  const msg = document.getElementById('sp-msg');
+  msg.textContent = 'Aplicando…'; msg.style.color = 'var(--muted)';
+  try {
+    const r = await fetch(API + '/admin?action=set-plan', {
+      method: 'POST',
+      headers: { 'x-admin-secret': adminSecret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUserId, plan: 'free' }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    toast('Cuenta en plan gratuito', 'success');
+    closeModal('user-modal');
+    loadUsers();
+    loadDashboard();
+  } catch (err) {
+    msg.textContent = 'No se pudo: ' + err.message;
+    msg.style.color = 'var(--amber)';
   }
 }
 
