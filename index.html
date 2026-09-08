@@ -627,16 +627,17 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
             </select>
           </div>
           <div>
-            <div class="field-label">Meses</div>
+            <div class="field-label" id="sp-dur-label">Meses</div>
             <input type="number" class="field-input" id="sp-meses" value="1" min="1" max="24">
           </div>
         </div>
         <div class="grid-2" style="gap:10px;margin-bottom:10px">
           <div>
             <div class="field-label">Plan que se activa</div>
-            <select class="field-select" id="sp-plan">
+            <select class="field-select" id="sp-plan" onchange="pintarVigencia()">
               <option value="pro">Pro — $39/mes</option>
               <option value="agency">Agency — $99/mes</option>
+              <option value="trial">Prueba — acceso Pro por días</option>
             </select>
           </div>
           <div>
@@ -650,7 +651,7 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
           <button class="btn btn-ghost" onclick="quitarPlan()">Bajar a gratuito</button>
           <span id="sp-msg" style="font-size:12px"></span>
         </div>
-        <div class="hint-plan" style="margin-top:8px">La cortesía <b>no</b> se registra como ingreso. Si la cuenta ya tiene fecha por delante, los meses se <b>suman</b>.</div>
+        <div class="hint-plan" style="margin-top:8px" id="sp-hint">La cortesía <b>no</b> se registra como ingreso. Si la cuenta ya tiene fecha por delante, los meses se <b>suman</b>.</div>
       </div>
       <div style="margin-bottom:16px">
         <div class="field-label">Estado</div>
@@ -984,7 +985,21 @@ async function openUser(id) {
     const meta = c?.public_metadata || {};
     const vig = document.getElementById('plan-vigencia');
     const DE_PAGO = ['pro', 'agency', 'agencia', 'individual'];
-    if (!DE_PAGO.includes(planClerk)) {
+    // Una prueba tiene fecha propia (`trial_until`) y también hay que mirarla:
+    // decir «no hay nada que cobrar» escondía una prueba sin caducidad.
+    const finPrueba = meta.trial_until || (planClerk === 'trial' ? meta.hasta : null);
+    if (planClerk === 'trial') {
+      if (!finPrueba) {
+        vig.innerHTML = '⚠ Prueba <b>sin fecha de fin</b>: no la va a caducar nadie. Ponle días aquí abajo.';
+        vig.style.color = 'var(--amber)';
+      } else {
+        const d = Math.ceil((new Date(finPrueba) - new Date()) / 86400000);
+        vig.innerHTML = d > 0
+          ? 'Prueba hasta el <b>' + formatDate(finPrueba) + '</b> (' + d + ' día' + (d === 1 ? '' : 's') + ')'
+          : '⚠ La prueba venció el <b>' + formatDate(finPrueba) + '</b> y sigue activa.';
+        vig.style.color = d > 0 ? 'var(--muted)' : 'var(--amber)';
+      }
+    } else if (!DE_PAGO.includes(planClerk)) {
       vig.innerHTML = 'Plan <b>' + planClerk + '</b>: no hay nada que cobrar.';
       vig.style.color = 'var(--muted)';
     } else if (!meta.hasta) {
@@ -999,9 +1014,11 @@ async function openUser(id) {
         + (meta.origen === 'cortesia' ? ' · <b>cortesía</b>, no es ingreso' : meta.origen ? ' · ' + meta.origen : '');
       vig.style.color = meta.origen === 'cortesia' ? 'var(--muted)' : 'var(--green)';
     }
-    if (DE_PAGO.includes(planClerk)) document.getElementById('sp-plan').value = planClerk === 'agency' ? 'agency' : 'pro';
+    if (planClerk === 'trial') document.getElementById('sp-plan').value = 'trial';
+    else if (DE_PAGO.includes(planClerk)) document.getElementById('sp-plan').value = planClerk === 'agency' ? 'agency' : 'pro';
     if (meta.origen) document.getElementById('sp-origen').value = meta.origen;
     document.getElementById('sp-msg').textContent = '';
+    pintarVigencia();
 
     const sel = document.getElementById('edit-plan');
     // Si viene con un valor antiguo ('individual') se ofrece igual, para no
@@ -1064,15 +1081,42 @@ async function saveUser() {
 // Llama a /admin?action=set-plan, que es lo único que deja el plan con fecha de
 // fin. Guardar el plan desde el selector de arriba NO pone fecha: así se
 // regalaron seis cuentas de Pro que no caducaba nadie.
+// Una prueba se mide en días y nunca es un cobro: al elegirla, el formulario
+// cambia de unidad y deja de pedir concepto e importe, en vez de aceptarlos y
+// descartarlos por detrás. Lo que no aplica, no se enseña.
+function pintarVigencia() {
+  const esPrueba = document.getElementById('sp-plan').value === 'trial';
+  const dur = document.getElementById('sp-meses');
+  document.getElementById('sp-dur-label').textContent = esPrueba ? 'Días' : 'Meses';
+  dur.max = esPrueba ? 90 : 24;
+  if (esPrueba && Number(dur.value) <= 24) dur.value = 14;
+  if (!esPrueba && Number(dur.value) > 24) dur.value = 1;
+
+  const origen = document.getElementById('sp-origen');
+  origen.disabled = esPrueba;
+  if (esPrueba) origen.value = 'cortesia';
+  origen.parentElement.style.opacity = esPrueba ? '.45' : '1';
+  const monto = document.getElementById('sp-monto');
+  monto.disabled = esPrueba;
+  monto.parentElement.style.opacity = esPrueba ? '.45' : '1';
+
+  document.getElementById('sp-hint').innerHTML = esPrueba
+    ? 'La prueba da acceso <b>Pro</b> y caduca sola: el cron la baja a gratuito y le avisa por correo. No cuenta como ingreso.'
+    : 'La cortesía <b>no</b> se registra como ingreso. Si la cuenta ya tiene fecha por delante, los meses se <b>suman</b>.';
+}
+
 async function confirmarPago() {
   const msg = document.getElementById('sp-msg');
-  const meses = parseInt(document.getElementById('sp-meses').value, 10);
-  if (!Number.isFinite(meses) || meses < 1 || meses > 24) {
-    msg.textContent = 'Los meses tienen que estar entre 1 y 24.';
+  const esPrueba = document.getElementById('sp-plan').value === 'trial';
+  const dur = parseInt(document.getElementById('sp-meses').value, 10);
+  const tope = esPrueba ? 90 : 24;
+  if (!Number.isFinite(dur) || dur < 1 || dur > tope) {
+    msg.textContent = `${esPrueba ? 'Los días' : 'Los meses'} tienen que estar entre 1 y ${tope}.`;
     msg.style.color = 'var(--amber)';
     return;
   }
-  const monto = document.getElementById('sp-monto').value.trim();
+  const meses = dur;
+  const monto = esPrueba ? '' : document.getElementById('sp-monto').value.trim();
   msg.textContent = 'Aplicando…'; msg.style.color = 'var(--muted)';
   try {
     const r = await fetch(API + '/admin?action=set-plan', {
@@ -1081,8 +1125,7 @@ async function confirmarPago() {
       body: JSON.stringify({
         userId: currentUserId,
         plan: document.getElementById('sp-plan').value,
-        meses,
-        origen: document.getElementById('sp-origen').value,
+        ...(esPrueba ? { dias: dur } : { meses, origen: document.getElementById('sp-origen').value }),
         monto: monto ? Number(monto) : undefined,
         nota: document.getElementById('sp-nota').value.trim() || undefined,
       }),
