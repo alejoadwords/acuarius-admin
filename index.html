@@ -317,6 +317,7 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
       <div class="page-title" id="page-title">Dashboard</div>
       <div class="topbar-right">
         <div class="badge-live"><div class="badge-live-dot"></div>En vivo</div>
+        <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px" onclick="salir()">Salir</button>
       </div>
     </div>
     <div class="content">
@@ -326,7 +327,7 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
         <div class="metrics-grid" id="metrics-grid">
           <div class="metric-card blue"><div class="metric-label">Usuarios totales</div><div class="metric-value" id="m-total">—</div><div class="metric-sub"><span id="m-new7">—</span> nuevos esta semana</div></div>
           <div class="metric-card green"><div class="metric-label">MRR</div><div class="metric-value" id="m-mrr">—</div><div class="metric-sub"><span id="m-pagando">—</span> cuentas pagando de verdad</div></div>
-          <div class="metric-card amber"><div class="metric-label">Sin cobrar</div><div class="metric-value" id="m-sincobrar">—</div><div class="metric-sub">Planes de pago sin pago registrado</div></div>
+          <div class="metric-card amber"><div class="metric-label">Sin cobrar</div><div class="metric-value" id="m-sincobrar">—</div><div class="metric-sub" id="m-sincobrar-sub">Planes de pago sin pago registrado</div></div>
           <div class="metric-card amber"><div class="metric-label">Trials activos</div><div class="metric-value" id="m-trials">—</div><div class="metric-sub"><span id="m-expiring" style="color:var(--amber)">—</span> expiran en 3 días</div></div>
           <div class="metric-card purple"><div class="metric-label">Mensajes (7d)</div><div class="metric-value" id="m-msgs">—</div><div class="metric-sub"><span id="m-imgs">—</span> imágenes generadas</div></div>
         </div>
@@ -694,27 +695,75 @@ let currentPage = 1;
 let searchTimer;
 
 // ── LOGIN ──
+// La clave se recuerda en sessionStorage, no en localStorage: sobrevive a
+// recargar la página (que es lo que molestaba: entrar de nuevo en cada F5) y
+// muere al cerrar la pestaña. Aun así caduca sola a las 8 horas, para que una
+// pestaña abierta toda la noche no quede como una sesión de admin eterna.
+const LLAVE = 'acuarius-admin-clave';
+const VIGENCIA = 8 * 60 * 60 * 1000;
+
+function recordar(clave) {
+  try {
+    sessionStorage.setItem(LLAVE, JSON.stringify({ clave, desde: Date.now() }));
+  } catch (e) {
+    // Modo incógnito o almacenamiento bloqueado: no es un fallo, solo significa
+    // que habrá que escribir la clave otra vez. Se avisa en consola y sigue.
+    console.warn('[admin] no se pudo recordar la sesión:', e.message);
+  }
+}
+
+function claveGuardada() {
+  try {
+    const g = JSON.parse(sessionStorage.getItem(LLAVE) || 'null');
+    if (!g || !g.clave) return '';
+    if (Date.now() - g.desde > VIGENCIA) { sessionStorage.removeItem(LLAVE); return ''; }
+    return g.clave;
+  } catch (e) { return ''; }
+}
+
+function salir() {
+  try { sessionStorage.removeItem(LLAVE); } catch (e) {}
+  adminSecret = '';
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('secret-input').value = '';
+  document.getElementById('secret-input').focus();
+}
+
+// Comprueba la clave contra el servidor de verdad. Nunca da por buena una
+// clave solo porque estuviera guardada: si dejó de servir, se vuelve al login.
+function entrarCon(clave, alFallar) {
+  return fetch(API + '/admin?action=metrics', { headers: { 'x-admin-secret': clave } })
+    .then(r => {
+      if (!r.ok) throw new Error('clave rechazada');
+      adminSecret = clave;
+      recordar(clave);
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      loadDashboard();
+      return true;
+    })
+    .catch(e => {
+      adminSecret = '';
+      try { sessionStorage.removeItem(LLAVE); } catch (_) {}
+      if (alFallar) alFallar(e);
+      return false;
+    });
+}
+
 function doLogin() {
   const val = document.getElementById('secret-input').value;
   if (!val) return;
-  adminSecret = val;
-  // Verificar con una llamada real
-  fetch(API + '/admin?action=metrics', { headers: { 'x-admin-secret': adminSecret } })
-    .then(r => {
-      if (r.ok) {
-        document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('app').classList.remove('hidden');
-        loadDashboard();
-      } else {
-        document.getElementById('login-error').style.display = 'block';
-        adminSecret = '';
-      }
-    })
-    .catch(() => {
-      // En desarrollo, permitir acceso con clave hardcodeada para pruebas
-      document.getElementById('login-error').style.display = 'block';
-    });
+  entrarCon(val, () => { document.getElementById('login-error').style.display = 'block'; });
 }
+
+// Al abrir: si hay una clave recordada y sigue valiendo, se entra directo.
+// Mientras se comprueba se deja el login a la vista, así que si la comprobación
+// falla no hay pantallazo raro — simplemente nunca se va del login.
+(function sesionRecordada() {
+  const g = claveGuardada();
+  if (g) entrarCon(g);
+})();
 
 // ── NAV ──
 function showView(name) {
@@ -771,8 +820,15 @@ async function loadDashboard() {
     // mano sin registrar. Es el número que faltaba: el MRR decía $152 contando
     // cuentas de prueba con un plan antiguo.
     const at = data.atencion || {};
-    const sinCobrar = (at.sin_registrar || 0) + (at.cortesias || 0);
+    // La tarjeta cuenta SOLO lo que hay que resolver. Las cortesías son una
+    // decisión tomada, no un pendiente: si se sumaran aquí, el número nunca
+    // bajaría a cero por mucho que se ordenara todo, y un aviso que no se puede
+    // apagar se deja de mirar a la semana.
+    const sinCobrar = at.sin_registrar || 0;
     document.getElementById('m-sincobrar').textContent = sinCobrar;
+    document.getElementById('m-sincobrar-sub').textContent = at.cortesias
+      ? `Sin resolver · ${at.cortesias} de cortesía aparte`
+      : 'Planes de pago sin pago registrado';
     document.getElementById('m-trials').textContent = overview.trialUsers;
     document.getElementById('m-expiring').textContent = overview.trialsExpiringSoon;
     document.getElementById('m-msgs').textContent = activity.messagesLast7.toLocaleString();
@@ -821,7 +877,7 @@ async function loadDashboard() {
       document.getElementById('revenue-summary').innerHTML += `
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
           <div style="font-size:12px;color:var(--amber);font-weight:600;margin-bottom:8px">
-            ${sinCobrar} cuenta${sinCobrar === 1 ? '' : 's'} con plan de pago que no son ingreso
+            ${sinCobrar} cuenta${sinCobrar === 1 ? '' : 's'} con plan de pago sin resolver
           </div>
           ${lista}
           ${at.cortesias ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">${at.cortesias} de cortesía (a propósito)</div>` : ''}
