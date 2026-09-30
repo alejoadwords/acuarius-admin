@@ -591,6 +591,21 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
   </div>
 </div>
 
+<!-- MODAL ELIMINAR CUENTA: enseña la huella y pide escribir el correo -->
+<div class="modal-overlay hidden" id="del-modal" style="z-index:210">
+  <div class="modal" style="width:520px">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--red)">Eliminar cuenta por completo</div>
+      <button class="modal-close" onclick="closeModal('del-modal')">×</button>
+    </div>
+    <div class="modal-body" id="del-cuerpo"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('del-modal')">Cancelar</button>
+      <button class="btn btn-danger" id="del-btn" onclick="confirmarBorrado()" disabled style="opacity:.5">Eliminar para siempre</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL USUARIO -->
 <div class="modal-overlay hidden" id="user-modal">
   <div class="modal">
@@ -677,6 +692,14 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
       </div>
       <div class="field-label" style="margin-bottom:8px">Últimos logs</div>
       <div id="modal-logs" style="max-height:200px;overflow-y:auto"></div>
+
+      <!-- Zona de peligro: borrar la cuenta entera. Va al final y aparte,
+           lejos de «Guardar cambios», para que nadie la pulse por inercia. -->
+      <div style="margin-top:20px;padding:14px;border:1px solid rgba(239,68,68,.3);border-radius:10px;background:rgba(239,68,68,.06)">
+        <div class="field-label" style="color:var(--red);margin-bottom:4px">Zona de peligro</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Borra la cuenta de Clerk y todos sus datos de la base: leads, conversaciones, agentes, canales, campañas… No se puede deshacer.</div>
+        <button class="btn btn-danger" onclick="abrirBorrado()">Eliminar cuenta por completo</button>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-danger" id="btn-suspend" onclick="toggleSuspend()">Suspender</button>
@@ -1622,6 +1645,80 @@ async function syncUsers() {
 }
 
 // ── UTILS ──
+// ── ELIMINAR CUENTA ──
+// Dos pasos: la huella (qué hay, qué bloquea, de qué avisar) y el borrado, que
+// solo se habilita escribiendo el correo exacto. Ver api/admin.js
+// (?action=user-footprint / ?action=delete-user) y borrar_cuenta() en Supabase.
+let _delFicha = null;
+function escHtml(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+async function abrirBorrado() {
+  const cuerpo = document.getElementById('del-cuerpo');
+  const btn = document.getElementById('del-btn');
+  _delFicha = null;
+  btn.disabled = true; btn.style.opacity = '.5';
+  cuerpo.innerHTML = '<div style="color:var(--muted);font-size:13px">Revisando qué tiene la cuenta…</div>';
+  document.getElementById('del-modal').classList.remove('hidden');
+  try {
+    const f = await apiGet('/admin?action=user-footprint&id=' + encodeURIComponent(currentUserId));
+    _delFicha = f;
+    const filas = Object.entries(f.huella || {}).sort((a, b) => b[1] - a[1]);
+    const total = filas.reduce((n, [, v]) => n + v, 0);
+    const esperado = f.correo || f.id;
+    cuerpo.innerHTML =
+      '<div style="font-size:14px;margin-bottom:12px"><b>' + escHtml(f.nombre || f.correo || f.id) + '</b>'
+        + (f.correo ? '<div style="color:var(--muted);font-size:12px">' + escHtml(f.correo) + ' · ' + escHtml(f.plan || 'free') + (f.estado ? ' · ' + escHtml(f.estado) : '') + '</div>' : '') + '</div>'
+      + f.bloqueos.map(b => '<div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:var(--red);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">No se puede borrar: ' + escHtml(b) + '</div>').join('')
+      + f.avisos.map(a => '<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);color:var(--amber);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">' + escHtml(a) + '</div>').join('')
+      + '<div class="field-label" style="margin-bottom:6px">Se borrará (' + total.toLocaleString('es-CO') + ' filas)</div>'
+      + '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:14px">'
+        + (filas.length ? filas.map(([k, v]) => '<div style="display:flex;justify-content:space-between;padding:7px 12px;border-bottom:1px solid var(--border);font-size:12px"><span style="font-family:var(--mono);color:var(--muted)">' + escHtml(k) + '</span><b>' + v.toLocaleString('es-CO') + '</b></div>').join('')
+          : '<div style="padding:10px 12px;font-size:12px;color:var(--muted)">No tiene datos en la base; solo el usuario de Clerk.</div>')
+      + '</div>'
+      + (f.bloqueos.length ? '' :
+        '<div class="field-label">Motivo <span style="color:var(--muted);font-weight:400">(opcional)</span></div>'
+        + '<input type="text" class="field-input" id="del-motivo" placeholder="Cuenta de prueba, solicitud del cliente…" style="margin-bottom:12px">'
+        + '<div class="field-label">Para confirmar, escribe <b style="color:var(--text)">' + escHtml(esperado) + '</b></div>'
+        + '<input type="text" class="field-input" id="del-confirmar" autocomplete="off" spellcheck="false">'
+        + '<div id="del-msg" style="font-size:12px;margin-top:8px"></div>');
+    const inp = document.getElementById('del-confirmar');
+    if (inp) {
+      inp.addEventListener('input', () => {
+        const okc = inp.value.trim().toLowerCase() === esperado.toLowerCase();
+        btn.disabled = !okc; btn.style.opacity = okc ? '1' : '.5';
+      });
+      inp.focus();
+    }
+  } catch (e) {
+    cuerpo.innerHTML = '<div style="color:var(--red);font-size:13px">No se pudo revisar la cuenta: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function confirmarBorrado() {
+  if (!_delFicha) return;
+  const btn = document.getElementById('del-btn');
+  const msg = document.getElementById('del-msg');
+  btn.disabled = true; btn.textContent = 'Eliminando…';
+  try {
+    const r = await fetch(API + '/admin?action=delete-user', {
+      method: 'PUT',
+      headers: { 'x-admin-secret': adminSecret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: _delFicha.id, confirmar: document.getElementById('del-confirmar').value, motivo: document.getElementById('del-motivo')?.value || '' }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    closeModal('del-modal');
+    closeModal('user-modal');
+    toast('Cuenta ' + (d.correo || _delFicha.id) + ' eliminada por completo', 'success');
+    loadUsers();
+  } catch (e) {
+    // Un fallo a medias (datos borrados, Clerk no) se dice tal cual: volver a
+    // pulsar termina el trabajo sin riesgo.
+    if (msg) { msg.style.color = 'var(--red)'; msg.textContent = e.message; }
+    btn.disabled = false; btn.textContent = 'Eliminar para siempre';
+  }
+}
+
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' }); }
 function formatDateTime(d) { if (!d) return '—'; return new Date(d).toLocaleString('es-CO', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }); }
