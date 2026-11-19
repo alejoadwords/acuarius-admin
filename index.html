@@ -436,12 +436,15 @@ td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
         </div>
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Registro de pagos</div>
-            <button class="btn btn-primary" onclick="openAddBilling()" style="font-size:12px;padding:6px 14px">+ Agregar pago</button>
+            <div class="card-title">Pagos de los clientes</div>
+            <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="b-prueba" onchange="loadBilling()"> Ver pagos de prueba
+            </label>
           </div>
+          <div style="font-size:12px;color:var(--muted);padding:0 0 12px">Una fila por factura, con lo que pagó en cada concepto. Que Stripe diga «pendiente» es normal: el dinero pasa a disponible y luego al banco unos días después del cobro.</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Usuario</th><th>Plan</th><th>Monto</th><th>Período</th><th>Estado</th></tr></thead>
+              <thead><tr><th>Fecha</th><th>Cuenta</th><th>Qué pagó</th><th>Total</th><th>Origen</th></tr></thead>
               <tbody id="billing-table"><tr class="loading-row"><td colspan="5">Cargando...</td></tr></tbody>
             </table>
           </div>
@@ -1234,22 +1237,53 @@ async function extendTrial(id) {
 }
 
 // ── FACTURACIÓN ──
+// Los pagos salen de /admin?action=cobros: Stripe y Hotmart (tabla cobros) más
+// los pagos externos confirmados desde la ficha (tabla billing).
+const CONCEPTO = { pro: 'Licencia Pro', agency: 'Agency', agencia: 'Agency', usuarios: 'Usuarios extra', contactos: 'Contactos extra',
+  mensajes: 'Mensajes del agente', clientes: 'Clientes extra', sms: 'SMS', agente: 'Agente extra' };
+const ORIGEN = { stripe: 'Stripe', hotmart: 'Hotmart', manual: 'Pago externo' };
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const dinero = (n, m) => (n < 0 ? '−' : '') + '$' + Math.abs(n).toFixed(2) + (m && m !== 'USD' ? ' ' + m : '');
+
 async function loadBilling() {
+  const tbody = document.getElementById('billing-table');
   try {
-    const data = await apiGet('/admin?action=metrics');
+    const conPrueba = document.getElementById('b-prueba').checked;
+    const [data, cobros] = await Promise.all([
+      apiGet('/admin?action=metrics'),
+      apiGet('/admin?action=cobros' + (conPrueba ? '&prueba=1' : '')),
+    ]);
     document.getElementById('b-mrr').textContent = '$' + data.revenue.mrr;
     document.getElementById('b-month').textContent = '$' + data.revenue.revenueThisMonth;
     document.getElementById('b-total').textContent = '$' + data.revenue.totalRevenue;
 
-    // TODO: cargar registros de billing de Supabase
-    document.getElementById('billing-table').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:40px">Sin registros de facturación aún.<br><small>Usa "+ Agregar pago" para registrar pagos manuales.</small></td></tr>';
+    const filas = cobros.movimientos || [];
+    if (!filas.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:40px">Todavía no hay pagos registrados.' +
+        (cobros.prueba_ocultos ? '<br><small>' + cobros.prueba_ocultos + ' de prueba ocultos.</small>' : '') + '</td></tr>';
+      return;
+    }
+    tbody.innerHTML = filas.map(m => {
+      const signo = m.tipo === 'cobro' || m.tipo === 'cancelado' ? 1 : -1;
+      const conceptos = m.conceptos.map(c => esc(CONCEPTO[c.concepto] || c.concepto) + ' <span style="font-family:var(--mono);color:var(--muted)">' + dinero(signo * c.monto) + '</span>').join('<br>');
+      const etiqueta = m.tipo === 'reembolso' ? '<span style="color:var(--red)">Reembolso</span>'
+        : m.tipo === 'contracargo' ? '<span style="color:var(--red)">Contracargo</span>'
+        : m.tipo === 'cancelado' ? '<span style="color:var(--muted)">Cancelado</span>' : '';
+      const enStripe = m.pasarela === 'stripe' && !m.prueba && /^in_/.test(m.referencia || '')
+        ? ' · <a href="https://dashboard.stripe.com/invoices/' + encodeURIComponent(m.referencia) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue-lt)">ver en Stripe</a>' : '';
+      return '<tr' + (m.user_id ? ' onclick="openUser(\'' + esc(m.user_id) + '\')"' : '') + (m.prueba ? ' style="opacity:.55"' : '') + '>' +
+        '<td class="mono">' + formatDate(m.fecha) + '</td>' +
+        '<td><div style="font-weight:500">' + esc(m.nombre || '—') + '</div><div style="font-size:11px;color:var(--muted)">' + esc(m.correo || m.user_id || 'Sin cuenta') + '</div></td>' +
+        '<td style="font-size:12px">' + conceptos + (m.periodo === 'anual' ? '<div style="font-size:11px;color:var(--muted)">Anual</div>' : '') + '</td>' +
+        '<td class="mono" style="font-weight:600">' + dinero(signo * m.total, m.moneda) + (etiqueta ? '<div style="font-size:11px">' + etiqueta + '</div>' : '') + '</td>' +
+        '<td style="font-size:12px">' + esc(ORIGEN[m.pasarela] || m.pasarela) + (m.prueba ? ' · prueba' : '') +
+          (m.factura && m.factura !== m.referencia ? '<div style="font-size:11px;color:var(--muted)" class="mono">' + esc(m.factura) + '</div>' : '') + enStripe + '</td>' +
+        '</tr>';
+    }).join('');
   } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--red);padding:30px">No se pudieron cargar los pagos: ' + esc(err.message).slice(0, 160) + '</td></tr>';
     toast('Error cargando facturación', 'error');
   }
-}
-
-function openAddBilling() {
-  toast('Próximamente: registro de pagos', 'success');
 }
 
 // ── TEST USERS ──
